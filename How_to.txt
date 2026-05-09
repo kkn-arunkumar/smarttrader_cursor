@@ -1,0 +1,22 @@
+Setup
+Create and activate a venv, then install:
+
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+Configure Oracle: copy .env.example to .env and set:
+
+ORACLE_USER, ORACLE_PASSWORD, ORACLE_DSN (e.g. localhost:1521/ORCL or your TNS string).
+Run:
+
+Download latest bhav copy and load:
+python main.py
+For a specific date:
+python main.py --date 2025-03-07
+Only download:
+python main.py --download-only
+Only load an existing CSV:
+python main.py --load-only path\to\file.csv
+Replace existing rows for that date before insert:
+python main.py --date 2025-03-07 --replace
+The downloader uses a session and User-Agent/Referer so NSE accepts the request, and tries multiple archive URLs. The loader uses batch insert (executemany) and can create the NSE_BHAV_COPY table automatically. For other NSE file types, you can use download_file(url, ...) in nse_downloader.py and add a matching table and load logic in oracle_loader.py.
