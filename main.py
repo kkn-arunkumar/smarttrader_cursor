@@ -1,103 +1,60 @@
-"""
-NSE India → Oracle: download bhav copy (and other) files from NSE and load into Oracle.
-Usage:
-  python main.py                    # download latest bhav copy and load to Oracle
-  python main.py --date 2025-03-07  # specific date (YYYY-MM-DD)
-  python main.py --download-only    # only download, do not load
-  python main.py --load-only <path> # only load from existing CSV
-"""
-import argparse
-from datetime import datetime
-from pathlib import Path
+from datetime import datetime, timedelta
+import oracledb
+import subprocess
+from config import ORACLE_USER, ORACLE_PASSWORD, ORACLE_DSN
 
-from config import DOWNLOAD_DIR
-from nse_downloader import download_bhav_copy
-from oracle_loader import load_bhav_copy_to_oracle
+conn = oracledb.connect(
+    user=ORACLE_USER,
+    password=ORACLE_PASSWORD,
+    dsn=ORACLE_DSN
+)
 
+cursor = conn.cursor()
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Download NSE India files and load into Oracle database."
-    )
-    parser.add_argument(
-        "--date",
-        type=str,
-        default=None,
-        help="Date for bhav copy (YYYY-MM-DD). Default: previous trading day.",
-    )
-    parser.add_argument(
-        "--download-dir",
-        type=Path,
-        default=DOWNLOAD_DIR,
-        help="Directory to save downloaded files.",
-    )
-    parser.add_argument(
-        "--download-only",
-        action="store_true",
-        help="Only download; do not load to Oracle.",
-    )
-    parser.add_argument(
-        "--load-only",
-        type=Path,
-        metavar="CSV_PATH",
-        default=None,
-        help="Only load this CSV file to Oracle (skip download).",
-    )
-    parser.add_argument(
-        "--replace",
-        action="store_true",
-        help="Delete existing rows for the same date before insert (upsert by date).",
-    )
-    args = parser.parse_args()
+cursor.execute("""
+    select max(TRADDT) from nse_bhav_copy
+""")
 
-    if args.load_only:
-        csv_path = Path(args.load_only)
-        if not csv_path.exists():
-            print(f"File not found: {csv_path}")
-            return 1
-        print(f"Loading {csv_path} into Oracle...")
-        n = load_bhav_copy_to_oracle(csv_path, create_table=True)
-        print(f"Inserted {n} rows.")
-        return 0
+last_loaded_date = cursor.fetchone()[0]
 
-    for_date = None
-    if args.date:
-        try:
-            for_date = datetime.strptime(args.date, "%Y-%m-%d")
-        except ValueError:
-            print("Invalid --date. Use YYYY-MM-DD.")
-            return 1
-
-    print("Downloading NSE bhav copy...")
-    csv_path = download_bhav_copy(for_date=for_date, output_dir=args.download_dir)
-    if not csv_path or not csv_path.exists():
-        print("Download failed. Check date (trading day) and network.")
-        return 1
-    print(f"Downloaded: {csv_path}")
-
-    if args.download_only:
-        return 0
-
-    replace_for_date = None
-    if args.replace and for_date:
-        replace_for_date = for_date.strftime("%d-%b-%Y").upper()  # Oracle DD-MON-YYYY
-    elif args.replace and csv_path.exists():
-        # Try to infer date from filename, e.g. cm07MAR2025bhav.csv
-        name = csv_path.stem
-        if "bhav" in name.lower():
-            replace_for_date = name.replace("cm", "").replace("bhav", "")  # e.g. 07MAR2025
-            if len(replace_for_date) >= 9:
-                replace_for_date = (replace_for_date[:2] + "-" + replace_for_date[2:5] + "-" + replace_for_date[5:]).upper()
-
-    print("Loading into Oracle...")
-    n = load_bhav_copy_to_oracle(
-        csv_path,
-        create_table=True,
-        replace_for_date=replace_for_date,
-    )
-    print(f"Inserted {n} rows into NSE_BHAV_COPY.")
-    return 0
+if last_loaded_date is None:
+    raise Exception("No load history found.")
+# print(last_loaded_date)
+start_date = last_loaded_date.date() + timedelta(days=1)
+end_date = datetime.today().date()
+# print(start_date)
+# print(end_date)
 
 
-if __name__ == "__main__":
-    exit(main())
+while start_date <= end_date:
+
+    # Skip Saturday (5) and Sunday (6)
+
+    process_date = start_date.strftime("%Y-%m-%d")
+
+    print(f"Loading data for {process_date}")
+
+    try:
+        result = subprocess.run(
+            ["python", "load_main.py", "--date", process_date],
+            capture_output=True,
+            text=True
+        )
+
+        output = (result.stdout or "") + (result.stderr or "")
+
+        if "Download failed. Check date (trading day) and network" in output:
+            print(f"No trading data for {process_date}. Skipping...")
+        elif result.returncode != 0:
+            print(f"Error processing {process_date}")
+            print(output)
+            raise Exception(f"load_main.py failed for {process_date}")
+
+    except Exception as e:
+        print(f"Unexpected error for {process_date}: {e}")
+        raise
+
+    start_date += timedelta(days=1)
+
+cursor.close()
+conn.close()

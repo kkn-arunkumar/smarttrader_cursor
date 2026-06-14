@@ -61,31 +61,31 @@ Python application to **download files from [NSE India](https://www.nseindia.com
 - **Download latest bhav copy and load to Oracle:**
 
   ```bash
-  python main.py
+  python load_main.py
   ```
 
 - **Specific date (YYYY-MM-DD):**
 
   ```bash
-  python main.py --date 2025-03-07
+  python load_main.py --date 2025-03-07
   ```
 
 - **Only download (no Oracle load):**
 
   ```bash
-  python main.py --download-only
+  python load_main.py --download-only
   ```
 
 - **Only load an existing CSV:**
 
   ```bash
-  python main.py --load-only downloads/cm07MAR2025bhav.csv
+  python load_main.py --load-only downloads/cm07MAR2025bhav.csv
   ```
 
 - **Replace existing data for that date before insert:**
 
   ```bash
-  python main.py --date 2025-03-07 --replace
+  python load_main.py --date 2025-03-07 --replace
   ```
 
 ## Project layout
