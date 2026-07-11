@@ -1,0 +1,26 @@
+SELECT *
+FROM
+(
+    SELECT
+        TCKRSYMB,
+        COUNT(*) AS DAYS_OVER_10,
+        MAX(ABS(PCT_CHANGE)) AS MAX_MOVE
+    FROM
+    (
+SELECT
+    TCKRSYMB,
+    TRADDT,
+    round(((CLSPRIC -
+            LAG(CLSPRIC) OVER
+            (PARTITION BY TCKRSYMB ORDER BY TRADDT))/
+            LAG(CLSPRIC) OVER
+            (PARTITION BY TCKRSYMB ORDER BY TRADDT))*100,2) PCT_CHANGE
+FROM nse_bhav_copy
+WHERE SCTYSRS='EQ'
+and TRADDT > sysdate -30)
+    WHERE ABS(PCT_CHANGE) >= 5
+    GROUP BY TCKRSYMB
+    ORDER BY DAYS_OVER_10 DESC,
+             MAX_MOVE DESC
+             )
+WHERE ROWNUM <=25;
